@@ -498,9 +498,6 @@ for facei in range(len(ownerfile.values)):
         kappa[celli_n] -= n_alpha_x[facei]*Sfx[facei] + n_alpha_y[facei]*Sfy[facei] + n_alpha_z[facei]*Sfz[facei]
 kappa[:n_cells] = kappa[:n_cells]/vols
 
-# apply extrapolateCalculated boundary condition
-for facei in range(len(neighfile.values),len(ownerfile.values),1):
-    kappa[n_cells+facei-n_internal_faces] = kappa[ownerfile.values[facei]]
 
 #print(f"max/min:{max(magGradU)} {min(magGradU)}")
 #print(f"max/min:{max(gradUxx)} {min(gradUxx)}")
@@ -599,6 +596,14 @@ for facei in range(len(ownerfile.values)):
 Hx[:n_cells] = Hx[:n_cells]/vols + rho0[:n_cells]*Ux0[:n_cells]/dt
 Hy[:n_cells] = Hy[:n_cells]/vols + rho0[:n_cells]*Uy0[:n_cells]/dt
 Hz[:n_cells] = Hz[:n_cells]/vols + rho0[:n_cells]*Uz0[:n_cells]/dt
+
+# apply extrapolateCalculated boundary condition
+for facei in range(len(neighfile.values),len(ownerfile.values),1):
+    kappa[n_cells+facei-n_internal_faces] = kappa[ownerfile.values[facei]]
+    A[n_cells+facei-n_internal_faces] = A[ownerfile.values[facei]]
+    Hx[n_cells+facei-n_internal_faces] = Hx[ownerfile.values[facei]]
+    Hy[n_cells+facei-n_internal_faces] = Hy[ownerfile.values[facei]]
+    Hz[n_cells+facei-n_internal_faces] = Hz[ownerfile.values[facei]]
 
 time = data_dict[1]["time"]
 writeScalarVolType(A,n_cells,bounfile,time,sol,"UEqnA")
