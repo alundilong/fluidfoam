@@ -216,13 +216,20 @@ class OpenFoamFile(object):
 
         if boundary is not None:
             boun = str.encode(boundary)
+            if b"empty" in self.content.split(boun)[1].split(b"}")[0]:
+                self.empty_boundary = True
+                print("WARNING: Empty boundary")
+            else:
+                self.empty_boundary = False
+
             if b"value" in self.content.split(boun)[1].split(b"}")[0]:
                 data = self.content.split(boun)[1].split(b"value")[1]
             else:
                 if self.verbose:
                     print(R+"Warning : No data on boundary/patch")
                     print("Using the values of the nearest cells"+W)
-                self._nearest_data(boundary=boundary, precision=precision)
+                #self._nearest_data(boundary=boundary, precision=precision)
+                self._zero_data(boundary=boundary, precision=precision)
                 return
         else:
             try:
@@ -233,6 +240,10 @@ class OpenFoamFile(object):
         lines = data.split(b"\n")
         shortline = lines[0].split(b">")[-1]
         words = lines[0].split()
+        
+        self.zero_size_nonuniform = False
+        if b'nonuniform 0();' in shortline:
+            self.zero_size_nonuniform = True
 
         if not self.noheader:
             self.nonuniform = words[0] == b"nonuniform"
@@ -271,10 +282,21 @@ class OpenFoamFile(object):
                         + self.type_data + "!\n")
                 print("Only constant field in output\n"+W)
         elif shortline.count(b";") >= 1:
-            nb_pts = int(shortline.split(b"(")[0])
-            data = shortline.split(b"(")[1]
-            data = data.replace(b" ", b"\n")
-            data = data.replace(b");", b"\n);")
+            if not self.empty_boundary and not self.zero_size_nonuniform:
+                nb_pts = int(shortline.split(b"(")[0])
+                data = shortline.split(b"(")[1]
+                data = data.replace(b" ", b"\n")
+                data = data.replace(b");", b"\n);")
+            else:
+                nb_pts = 1
+                if self.type_data == "scalar":
+                    data = str.encode("0")
+                elif self.type_data == "vector":
+                    data = str.encode("(0 0 0)")
+                elif self.type_data == "symmtensor":
+                    data = str.encode("(0 0 0 0 0 0)")
+                elif self.type_data == "tensor":
+                    data = str.encode("(0 0 0 0 0 0 0 0 0)")
         elif self.codestream:
             nb_pts = 0
             if self.verbose:
@@ -285,38 +307,60 @@ class OpenFoamFile(object):
             data = b"\n(".join(data.split(b"\n(")[1:])
 
         if not self.is_ascii and not self.uniform:
-            if self.type_data == "scalar":
-                nb_numbers = nb_pts
-            elif self.type_data == "vector":
-                nb_numbers = 3 * nb_pts
-            elif self.type_data == "symmtensor":
-                nb_numbers = 6 * nb_pts
-            elif self.type_data == "tensor":
-                nb_numbers = 9 * nb_pts
-            if self.is_SP:
-                self.values = np.array(
-                    struct.unpack(
-                        "{}f".format(nb_numbers),
-                        data[: nb_numbers * struct.calcsize("f")],
+            if int(nb_pts) > 0:
+                if self.type_data == "scalar":
+                    nb_numbers = nb_pts
+                elif self.type_data == "vector":
+                    nb_numbers = 3 * nb_pts
+                elif self.type_data == "symmtensor":
+                    nb_numbers = 6 * nb_pts
+                elif self.type_data == "tensor":
+                    nb_numbers = 9 * nb_pts
+
+                if self.is_SP:
+                    self.values = np.array(
+                        struct.unpack(
+                            "{}f".format(nb_numbers),
+                            data[: nb_numbers * struct.calcsize("f")],
+                        )
                     )
-                )
+                else:
+                    self.values = np.array(
+                        struct.unpack(
+                            "{}d".format(nb_numbers),
+                            data[: nb_numbers * struct.calcsize("d")],
+                        )
+                    )
             else:
-                self.values = np.array(
-                    struct.unpack(
-                        "{}d".format(nb_numbers),
-                        data[: nb_numbers * struct.calcsize("d")],
-                    )
-                )
+                nb_pts = 1
+                if self.type_data == "scalar":
+                    nb_numbers = nb_pts
+                elif self.type_data == "vector":
+                    nb_numbers = 3 * nb_pts
+                elif self.type_data == "symmtensor":
+                    nb_numbers = 6 * nb_pts
+                elif self.type_data == "tensor":
+                    nb_numbers = 9 * nb_pts
+
+                if self.is_SP:
+                    self.values = np.zeros(nb_numbers,dtype=float)
+                else:
+                    self.values = np.zeros(nb_numbers,dtype=np.float64)
         else:
             if self.type_data == "scalar":
                 self.values = np.array(
                     [float(s) for s in data.strip().split(b"\n")[:nb_pts]]
                 )
             elif self.type_data in ("vector", "tensor", "symmtensor"):
-                lines = data.split(b";")[0].split(b"\n(")
-                lines = [line.split(b")")[0] for line in lines]
-                data = b" ".join(lines).strip()
-                self.values = np.array([float(s) for s in data.split()])
+                if not self.zero_size_nonuniform:
+                    lines = data.split(b";")[0].split(b"\n(")
+                    lines = [line.split(b")")[0] for line in lines]
+                    data = b" ".join(lines).strip()
+                    self.values = np.array([float(s) for s in data.split()])
+                else:
+                    decoded_data = data.decode('utf-8')
+                    cleaned_data = decoded_data.replace("(", "").replace(")", "").strip()
+                    self.values = np.array([float(s) for s in cleaned_data.split()])
 
         self.values = np.around(self.values, decimals=precision)
         if self.type_data == "vector":
@@ -444,6 +488,127 @@ class OpenFoamFile(object):
             self.values_x = self.values[::3]
             self.values_y = self.values[1::3]
             self.values_z = self.values[2::3]
+
+    def _zero_data(self, boundary, precision):
+
+        bounfile = OpenFoamFile(
+            self.pathcase + "/constant/polyMesh/",
+            name="boundary",
+            verbose=self.verbose
+        )
+        ownerfile = OpenFoamFile(
+            self.pathcase + "/constant/polyMesh/",
+            name="owner",
+            verbose=self.verbose
+        )
+        id0 = int(bounfile.boundaryface[str.encode(boundary)][b"startFace"])
+        nfaces = int(bounfile.boundaryface[str.encode(boundary)][b"nFaces"])
+        cell = np.empty(nfaces, dtype=int)
+        for i in range(nfaces):
+            cell[i] = ownerfile.values[id0 + i]
+        data = self.content.split(b"internalField")[1]
+
+        lines = data.split(b"\n")
+        shortline = lines[0].split(b">")[-1]
+        words = lines[0].split()
+
+        self.nonuniform = words[0] == b"nonuniform"
+        self.uniform = words[0] == b"uniform"
+        self.codestream = words[0] == b"#codeStream"
+        self.short = shortline[-1] == b";"
+
+        self.type_data = self.header[b"class"]
+
+        if b"ScalarField" in self.type_data:
+            self.type_data = "scalar"
+        elif b"VectorField" in self.type_data:
+            self.type_data = "vector"
+        elif b"SymmTensorField" in self.type_data:
+            self.type_data = "symmtensor"
+        elif b"TensorField" in self.type_data:
+            self.type_data = "tensor"
+
+        if self.uniform:
+            nb_pts = 1
+            if not (self.type_data == "scalar"):
+                data = shortline.split(b"(")[1]
+                data = data.replace(b" ", b"\n")
+                data = data.replace(b");", b"\n);")
+            else:
+                data = words[1].split(b";")[0]
+            if self.verbose:
+                print(R+"Warning : uniform field  of type "
+                        + self.type_data + "!\n")
+                print("Only constant field in output\n"+W)
+        elif shortline.count(b";") >= 1:
+            nb_pts = int(shortline.split(b"(")[0])
+            data = shortline.split(b"(")[1]
+            data = data.replace(b" ", b"\n")
+            data = data.replace(b");", b"\n);")
+        elif self.codestream:
+            nb_pts = 0
+            if self.verbose:
+                print(R+"Warning : codeStream field! "
+                        + "I can not read the source code!\n"+W)
+        else:
+            nb_pts = int(lines[1])
+            data = b"\n(".join(data.split(b"\n(")[1:])
+
+        if not self.is_ascii and not self.uniform:
+            if self.type_data == "scalar":
+                nb_numbers = nb_pts
+            elif self.type_data == "vector":
+                nb_numbers = 3 * nb_pts
+            elif self.type_data == "symmtensor":
+                nb_numbers = 6 * nb_pts
+            elif self.type_data == "tensor":
+                nb_numbers = 9 * nb_pts
+            if self.is_SP:
+                values = np.array(
+                    struct.unpack(
+                        "{}f".format(nb_numbers),
+                        data[: nb_numbers * struct.calcsize("f")],
+                    )
+                )
+            else:
+                values = np.array(
+                    struct.unpack(
+                        "{}d".format(nb_numbers),
+                        data[: nb_numbers * struct.calcsize("d")],
+                    )
+                )
+        else:
+            if self.type_data == "scalar":
+                values = np.array(
+                    [float(s) for s in data.strip().split(b"\n")[:nb_pts]]
+                )
+            elif self.type_data in ("vector", "tensor", "symmtensor"):
+                lines = data.split(b"\n(")
+                lines = [line.split(b")")[0] for line in lines]
+                data = b" ".join(lines).strip()
+                values = np.array([float(s) for s in data.split()])
+        values = np.around(values, decimals=precision)
+        if self.uniform:
+            self.values = values*0
+        else:
+            if self.type_data == "scalar":
+                nv = 1
+            elif self.type_data == "vector":
+                nv = 3
+            elif self.type_data == "symmtensor":
+                nv = 6
+            elif self.type_data == "tensor":
+                nv = 9
+            valuesbou = np.empty(nv * nfaces, dtype=float)
+            for i in range(nfaces):
+                valuesbou[i * nv: (i + 1) * nv] = values[
+                    nv * cell[i]: nv * (cell[i] + 1)
+                ]
+            self.values = valuesbou*0
+        if self.type_data == "vector":
+            self.values_x = self.values[::3]*0
+            self.values_y = self.values[1::3]*0
+            self.values_z = self.values[2::3]*0
 
     def _parse_face(self):
 
