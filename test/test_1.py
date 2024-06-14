@@ -498,6 +498,10 @@ for facei in range(len(ownerfile.values)):
         kappa[celli_n] -= n_alpha_x[facei]*Sfx[facei] + n_alpha_y[facei]*Sfy[facei] + n_alpha_z[facei]*Sfz[facei]
 kappa[:n_cells] = kappa[:n_cells]/vols
 
+# apply extrapolateCalculated boundary condition
+for facei in range(len(neighfile.values),len(ownerfile.values),1):
+    kappa[n_cells+facei-n_internal_faces] = kappa[ownerfile.values[facei]]
+
 #print(f"max/min:{max(magGradU)} {min(magGradU)}")
 #print(f"max/min:{max(gradUxx)} {min(gradUxx)}")
 #print(f"max/min:{max(gradUxy)} {min(gradUxy)}")
