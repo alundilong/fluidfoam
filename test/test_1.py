@@ -482,6 +482,22 @@ magGradU = np.sqrt(gradUxx*gradUxx + gradUxy*gradUxy + gradUxz*gradUxz
                    + gradUyx*gradUyx + gradUyy*gradUyy + gradUyz*gradUyz  
                    + gradUzx*gradUzx + gradUzy*gradUzy + gradUzz*gradUzz)
 
+magGradAlphaf = np.sqrt(gradAlphaxf*gradAlphaxf+gradAlphayf*gradAlphayf+gradAlphazf*gradAlphazf)
+n_alpha_x = gradAlphaxf/(magGradAlphaf+1.0e-16)
+n_alpha_y = gradAlphayf/(magGradAlphaf+1.0e-16)
+n_alpha_z = gradAlphazf/(magGradAlphaf+1.0e-16)
+
+kappa = np.zeros(total_vol_array_size)
+
+for facei in range(len(ownerfile.values)):
+    celli_o = ownerfile.values[facei]
+    kappa[celli_o] += n_alpha_x[facei]*Sfx[facei] + n_alpha_y[facei]*Sfy[facei] + n_alpha_z[facei]*Sfz[facei]
+
+    if facei < n_internal_faces:
+        celli_n = neighfile.values[facei]
+        kappa[celli_n] -= n_alpha_x[facei]*Sfx[facei] + n_alpha_y[facei]*Sfy[facei] + n_alpha_z[facei]*Sfz[facei]
+kappa[:n_cells] = kappa[:n_cells]/vols
+
 #print(f"max/min:{max(magGradU)} {min(magGradU)}")
 #print(f"max/min:{max(gradUxx)} {min(gradUxx)}")
 #print(f"max/min:{max(gradUxy)} {min(gradUxy)}")
