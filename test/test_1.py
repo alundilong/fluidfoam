@@ -412,7 +412,7 @@ for i in range(len(neighfile.values)):
     gradRhoyf[i] = wo*gradRhoy[celli_o] + wn*gradRhoy[celli_n]
     gradRhozf[i] = wo*gradRhoz[celli_o] + wn*gradRhoz[celli_n]
 
-# loop over faces at boundaries
+# loop over faces at boundaries (boundary condition can be applied here!!!)
 nx = Sfx/(magSf+1.0e-16)
 ny = Sfy/(magSf+1.0e-16)
 nz = Sfz/(magSf+1.0e-16)
@@ -483,19 +483,19 @@ magGradU = np.sqrt(gradUxx*gradUxx + gradUxy*gradUxy + gradUxz*gradUxz
                    + gradUzx*gradUzx + gradUzy*gradUzy + gradUzz*gradUzz)
 
 magGradAlphaf = np.sqrt(gradAlphaxf*gradAlphaxf+gradAlphayf*gradAlphayf+gradAlphazf*gradAlphazf)
-n_alpha_x = gradAlphaxf/(magGradAlphaf+1.0e-16)
-n_alpha_y = gradAlphayf/(magGradAlphaf+1.0e-16)
-n_alpha_z = gradAlphazf/(magGradAlphaf+1.0e-16)
+n_alphaf_x = gradAlphaxf/(magGradAlphaf+1.0e-16)
+n_alphaf_y = gradAlphayf/(magGradAlphaf+1.0e-16)
+n_alphaf_z = gradAlphazf/(magGradAlphaf+1.0e-16)
 
 kappa = np.zeros(total_vol_array_size)
 
 for facei in range(len(ownerfile.values)):
     celli_o = ownerfile.values[facei]
-    kappa[celli_o] += n_alpha_x[facei]*Sfx[facei] + n_alpha_y[facei]*Sfy[facei] + n_alpha_z[facei]*Sfz[facei]
+    kappa[celli_o] += n_alphaf_x[facei]*Sfx[facei] + n_alphaf_y[facei]*Sfy[facei] + n_alphaf_z[facei]*Sfz[facei]
 
     if facei < n_internal_faces:
         celli_n = neighfile.values[facei]
-        kappa[celli_n] -= n_alpha_x[facei]*Sfx[facei] + n_alpha_y[facei]*Sfy[facei] + n_alpha_z[facei]*Sfz[facei]
+        kappa[celli_n] -= n_alphaf_x[facei]*Sfx[facei] + n_alphaf_y[facei]*Sfy[facei] + n_alphaf_z[facei]*Sfz[facei]
 kappa[:n_cells] = kappa[:n_cells]/vols
 
 
@@ -605,7 +605,52 @@ for facei in range(len(neighfile.values),len(ownerfile.values),1):
     Hy[n_cells+facei-n_internal_faces] = Hy[ownerfile.values[facei]]
     Hz[n_cells+facei-n_internal_faces] = Hz[ownerfile.values[facei]]
 
+kappaf = np.zeros(total_surface_array_size)
+rAf = np.zeros(total_surface_array_size)
+Hfx = np.zeros(total_surface_array_size)
+Hfy = np.zeros(total_surface_array_size)
+Hfz = np.zeros(total_surface_array_size)
+
+for facei in range(len(neighfile.values)):
+    celli_o = ownerfile.values[facei]
+    celli_n = neighfile.values[facei]
+    wn = weights[facei]
+    wo = 1.0 - wn
+    kappaf[facei] = wn*kappa[celli_n] + wo*kappa[celli_o]
+    rAf[facei] = wn*1.0/A[celli_n] + wo*1.0/A[celli_o]
+    Hfx[facei] = wn*Hx[celli_n] + wo*Hx[celli_o]
+    Hfy[facei] = wn*Hy[celli_n] + wo*Hy[celli_o]
+    Hfz[facei] = wn*Hz[celli_n] + wo*Hz[celli_o]
+
+# surface value from vol values (boundary part)
+kappaf[n_internal_faces:] = kappa[n_cells:]
+rAf[n_internal_faces:] = 1.0/A[n_cells:]
+Hfx[n_internal_faces:] = Hx[n_cells:]
+Hfy[n_internal_faces:] = Hy[n_cells:]
+Hfz[n_internal_faces:] = Hz[n_cells:]
+
+pdeMomentumPrghError = np.zeros(total_vol_array_size)
+gx = 0.0
+gy = -9.81
+gz = 0.0
+sigma = 0.07
+for facei in range(len(ownerfile.values)):
+    celli_o = ownerfile.values[facei]
+    pdeMomentumPrghError[celli_o] += Sfx[facei]*gradPrghxf[facei] + Sfy[facei]*gradPrghyf[facei] + Sfz[facei]*gradPrghzf[facei]
+    pdeMomentumPrghError[celli_o] -= (Sfx[facei]*Hfx[facei] + Sfy[facei]*Hfy[facei] + Sfz[facei]*Hfz[facei])*rAf[facei]
+    pdeMomentumPrghError[celli_o] += (Sfx[facei]*gx*Cfx[facei]*gradRhoxf[facei] + Sfy[facei]*gy*Cfy[facei]*gradRhoyf[facei] + Sfz[facei]*gz*Cfz[facei]*gradRhozf[facei])*rAf[facei]
+    pdeMomentumPrghError[celli_o] -= (Sfx[facei]*gradAlphaxf[facei] + Sfy[facei]*gradAlphayf[facei] + Sfz[facei]*gradAlphazf[facei])*kappaf[facei]*sigma*rAf[facei]
+    if facei < n_internal_faces:
+        celli_n = neighfile.values[facei]
+        pdeMomentumPrghError[celli_o] -= Sfx[facei]*gradPrghxf[facei] + Sfy[facei]*gradPrghyf[facei] + Sfz[facei]*gradPrghzf[facei]
+        pdeMomentumPrghError[celli_o] += (Sfx[facei]*Hfx[facei] + Sfy[facei]*Hfy[facei] + Sfz[facei]*Hfz[facei])*rAf[facei]
+        pdeMomentumPrghError[celli_o] -= (Sfx[facei]*gx*Cfx[facei]*gradRhoxf[facei] + Sfy[facei]*gy*Cfy[facei]*gradRhoyf[facei] + Sfz[facei]*gz*Cfz[facei]*gradRhozf[facei])*rAf[facei]
+        pdeMomentumPrghError[celli_o] += (Sfx[facei]*gradAlphaxf[facei] + Sfy[facei]*gradAlphayf[facei] + Sfz[facei]*gradAlphazf[facei])*kappaf[facei]*sigma*rAf[facei]
+
+pdeMomentumPrghError[:n_cells] = pdeMomentumPrghError[:n_cells]/vols
+
 time = data_dict[1]["time"]
+writeScalarVolType(pdeMomentumPrghError,n_cells,bounfile,time,sol,"pdeMomentumPrghError")
 writeScalarVolType(A,n_cells,bounfile,time,sol,"UEqnA")
 writeVectorVolType(Hx,Hy,Hz,n_cells,bounfile,time,sol,"UEqnH")
 writeScalarVolType(magGradU,n_cells,bounfile,time,sol,"magGradU")
