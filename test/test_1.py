@@ -21,10 +21,17 @@ n_cells = len(xs)
 
 total_vol_array_size += n_cells
 
+neighfile = OpenFoamFile(sol+"/constant/polyMesh",name="neighbour",verbose=False)
+n_internal_faces = neighfile.nb_faces
+print(neighfile.nb_cell, n_internal_faces)
+print(len(neighfile.values))
+
 # boundary mesh
 bounfile = OpenFoamFile(sol+"/constant/polyMesh",name="boundary",verbose=False)
 print(bounfile.boundaryface)
 boundary_names = list(bounfile.boundaryface.keys())
+dict_boundary_start_face = {}
+dict_boundary_end_face = {}
 for name in boundary_names:
     key = name.decode('utf-8')
     xs,ys,zs = readmesh(sol,boundary=key)
@@ -32,15 +39,12 @@ for name in boundary_names:
     n_faces = int(bounfile.boundaryface[str.encode(key)][b'nFaces'])
     total_vol_array_size += n_faces
     print(f'{key}: {len(xs)} {len(ys)} {len(zs)}, startFace:{n_start_face}, nFaces:{n_faces}')
+    dict_boundary_start_face[key] = n_start_face - n_internal_faces + n_cells
+    dict_boundary_end_face[key] = n_start_face + n_faces - n_internal_faces + n_cells
 
 ownerfile = OpenFoamFile(sol+"/constant/polyMesh",name="owner",verbose=False)
 print(ownerfile.nb_cell, ownerfile.nb_faces)
 print(len(ownerfile.values))
-
-neighfile = OpenFoamFile(sol+"/constant/polyMesh",name="neighbour",verbose=False)
-n_internal_faces = neighfile.nb_faces
-print(neighfile.nb_cell, n_internal_faces)
-print(len(neighfile.values))
 
 total_surface_array_size = len(ownerfile.values)
 
@@ -148,14 +152,14 @@ for index, time in enumerate(sorted_filtered):
     data_dict.append(tmp_dict)
 
 alphaf = np.zeros(total_surface_array_size)
-alpha0 = data_dict[0]['alpha']
-alpha1 = data_dict[1]['alpha']
+alpha0 = data_dict[1]['alpha']
+alpha1 = data_dict[2]['alpha']
 alphaf[n_internal_faces:] = alpha1[n_cells:total_vol_array_size]
-phi = data_dict[1]['phi']
+phi = data_dict[2]['phi']
 phiAlpha = phi*alphaf
 
 prghf = np.zeros(total_surface_array_size)
-prgh1 = data_dict[1]['p_rgh']
+prgh1 = data_dict[2]['p_rgh']
 prghf[n_internal_faces:] = prgh1[n_cells:total_vol_array_size]
 
 rhol = 1.0e3
@@ -168,7 +172,7 @@ rhof[n_internal_faces:] = rho1[n_cells:total_vol_array_size]
 nul = 1.0e-6
 nug = 1.48e-5
 nuf = np.zeros(total_surface_array_size)
-nu1 = alpha1*nul + (1.0-alpha1)*nug 
+nu1 = (alpha1*nul*rhol + (1.0-alpha1)*nug*rhog)/rho1
 nuf[n_internal_faces:] = nu1[n_cells:total_vol_array_size]
 
 # examine the vof transport for each cell
@@ -203,13 +207,13 @@ print(divPhi/vols, np.max(divPhi/vols), np.min(divPhi/vols))
 # examine the pEqn for the given timestep 
 # grad(U)
 
-Ux0 = data_dict[0]['Ux']
-Uy0 = data_dict[0]['Uy']
-Uz0 = data_dict[0]['Uz']
+Ux0 = data_dict[1]['Ux']
+Uy0 = data_dict[1]['Uy']
+Uz0 = data_dict[1]['Uz']
 
-Ux1 = data_dict[1]['Ux']
-Uy1 = data_dict[1]['Uy']
-Uz1 = data_dict[1]['Uz']
+Ux1 = data_dict[2]['Ux']
+Uy1 = data_dict[2]['Uy']
+Uz1 = data_dict[2]['Uz']
 
 Ufx = np.zeros(total_surface_array_size)
 Ufy = np.zeros(total_surface_array_size)
@@ -532,6 +536,7 @@ A[:n_cells] = A[:n_cells]/vols + rho1[:n_cells]/dt
 Hx = np.zeros(total_vol_array_size)
 Hy = np.zeros(total_vol_array_size)
 Hz = np.zeros(total_vol_array_size)
+rhoPhi = rho1*phi
 for facei in range(len(ownerfile.values)):
     celli_o = ownerfile.values[facei]
     divU = gradUxxf[facei] + gradUyyf[facei] + gradUzzf[facei]
@@ -605,11 +610,37 @@ for facei in range(len(neighfile.values),len(ownerfile.values),1):
     Hy[n_cells+facei-n_internal_faces] = Hy[ownerfile.values[facei]]
     Hz[n_cells+facei-n_internal_faces] = Hz[ownerfile.values[facei]]
 
+HByA_x = Hx/A
+HByA_y = Hy/A
+HByA_z = Hz/A
+
+# handle HByA (U not assignable and p not fixedfluxextrapolatedpressurefvpatchscalarfield)
+boundary_name = 'leftWall'
+start_face = dict_boundary_start_face[boundary_name]
+end_face = dict_boundary_start_face[boundary_name]
+HByA_x[start_face:end_face] = Ux1[start_face:end_face]
+HByA_y[start_face:end_face] = Uy1[start_face:end_face]
+HByA_z[start_face:end_face] = Uz1[start_face:end_face]
+
+boundary_name = 'rightWall'
+start_face = dict_boundary_start_face[boundary_name]
+end_face = dict_boundary_start_face[boundary_name]
+HByA_x[start_face:end_face] = Ux1[start_face:end_face]
+HByA_y[start_face:end_face] = Uy1[start_face:end_face]
+HByA_z[start_face:end_face] = Uz1[start_face:end_face]
+
+boundary_name = 'lowerWall'
+start_face = dict_boundary_start_face[boundary_name]
+end_face = dict_boundary_start_face[boundary_name]
+HByA_x[start_face:end_face] = Ux1[start_face:end_face]
+HByA_y[start_face:end_face] = Uy1[start_face:end_face]
+HByA_z[start_face:end_face] = Uz1[start_face:end_face]
+
 kappaf = np.zeros(total_surface_array_size)
 rAf = np.zeros(total_surface_array_size)
-Hfx = np.zeros(total_surface_array_size)
-Hfy = np.zeros(total_surface_array_size)
-Hfz = np.zeros(total_surface_array_size)
+HByA_f_x = np.zeros(total_surface_array_size)
+HByA_f_y = np.zeros(total_surface_array_size)
+HByA_f_z = np.zeros(total_surface_array_size)
 
 for facei in range(len(neighfile.values)):
     celli_o = ownerfile.values[facei]
@@ -618,16 +649,16 @@ for facei in range(len(neighfile.values)):
     wo = 1.0 - wn
     kappaf[facei] = wn*kappa[celli_n] + wo*kappa[celli_o]
     rAf[facei] = wn*1.0/A[celli_n] + wo*1.0/A[celli_o]
-    Hfx[facei] = wn*Hx[celli_n] + wo*Hx[celli_o]
-    Hfy[facei] = wn*Hy[celli_n] + wo*Hy[celli_o]
-    Hfz[facei] = wn*Hz[celli_n] + wo*Hz[celli_o]
+    HByA_f_x[facei] = wn*HByA_f_x[celli_n] + wo*HByA_f_x[celli_o]
+    HByA_f_y[facei] = wn*HByA_f_y[celli_n] + wo*HByA_f_y[celli_o]
+    HByA_f_z[facei] = wn*HByA_f_z[celli_n] + wo*HByA_f_z[celli_o]
 
 # surface value from vol values (boundary part)
 kappaf[n_internal_faces:] = kappa[n_cells:]
 rAf[n_internal_faces:] = 1.0/A[n_cells:]
-Hfx[n_internal_faces:] = Hx[n_cells:]
-Hfy[n_internal_faces:] = Hy[n_cells:]
-Hfz[n_internal_faces:] = Hz[n_cells:]
+HByA_f_x[n_internal_faces:] = HByA_x[n_cells:]
+HByA_f_y[n_internal_faces:] = HByA_y[n_cells:]
+HByA_f_z[n_internal_faces:] = HByA_z[n_cells:]
 
 pdeMomentumPrghError = np.zeros(total_vol_array_size)
 gx = 0.0
@@ -637,21 +668,23 @@ sigma = 0.07
 for facei in range(len(ownerfile.values)):
     celli_o = ownerfile.values[facei]
     pdeMomentumPrghError[celli_o] += Sfx[facei]*gradPrghxf[facei] + Sfy[facei]*gradPrghyf[facei] + Sfz[facei]*gradPrghzf[facei]
-    pdeMomentumPrghError[celli_o] -= (Sfx[facei]*Hfx[facei] + Sfy[facei]*Hfy[facei] + Sfz[facei]*Hfz[facei])*rAf[facei]
+    pdeMomentumPrghError[celli_o] -= Sfx[facei]*HByA_f_x[facei] + Sfy[facei]*HByA_f_y[facei] + Sfz[facei]*HByA_f_z[facei]
     pdeMomentumPrghError[celli_o] += (Sfx[facei]*gx*Cfx[facei]*gradRhoxf[facei] + Sfy[facei]*gy*Cfy[facei]*gradRhoyf[facei] + Sfz[facei]*gz*Cfz[facei]*gradRhozf[facei])*rAf[facei]
     pdeMomentumPrghError[celli_o] -= (Sfx[facei]*gradAlphaxf[facei] + Sfy[facei]*gradAlphayf[facei] + Sfz[facei]*gradAlphazf[facei])*kappaf[facei]*sigma*rAf[facei]
     if facei < n_internal_faces:
         celli_n = neighfile.values[facei]
         pdeMomentumPrghError[celli_o] -= Sfx[facei]*gradPrghxf[facei] + Sfy[facei]*gradPrghyf[facei] + Sfz[facei]*gradPrghzf[facei]
-        pdeMomentumPrghError[celli_o] += (Sfx[facei]*Hfx[facei] + Sfy[facei]*Hfy[facei] + Sfz[facei]*Hfz[facei])*rAf[facei]
+        pdeMomentumPrghError[celli_o] += Sfx[facei]*HByA_f_x[facei] + Sfy[facei]*HByA_f_y[facei] + Sfz[facei]*HByA_f_z[facei]
         pdeMomentumPrghError[celli_o] -= (Sfx[facei]*gx*Cfx[facei]*gradRhoxf[facei] + Sfy[facei]*gy*Cfy[facei]*gradRhoyf[facei] + Sfz[facei]*gz*Cfz[facei]*gradRhozf[facei])*rAf[facei]
         pdeMomentumPrghError[celli_o] += (Sfx[facei]*gradAlphaxf[facei] + Sfy[facei]*gradAlphayf[facei] + Sfz[facei]*gradAlphazf[facei])*kappaf[facei]*sigma*rAf[facei]
 
 pdeMomentumPrghError[:n_cells] = pdeMomentumPrghError[:n_cells]/vols
 
-time = data_dict[1]["time"]
+time = data_dict[2]["time"]
 writeScalarVolType(pdeMomentumPrghError,n_cells,bounfile,time,sol,"pdeMomentumPrghError")
 writeScalarVolType(A,n_cells,bounfile,time,sol,"UEqnA")
+writeVectorVolType(HByA_x,HByA_y,HByA_z,n_cells,bounfile,time,sol,"HByA")
+writeScalarVolType(nu1,n_cells,bounfile,time,sol,"nu")
 writeVectorVolType(Hx,Hy,Hz,n_cells,bounfile,time,sol,"UEqnH")
 writeScalarVolType(magGradU,n_cells,bounfile,time,sol,"magGradU")
 writeVectorVolType(gradAlphax,gradAlphay,gradAlphaz,n_cells,bounfile,time,sol,"gradAlpha")
@@ -660,6 +693,7 @@ writeVectorVolType(gradRhox,gradRhoy,gradRhoz,n_cells,bounfile,time,sol,"gradRho
 writeVectorVolType(Ux1,Uy1,Uz1,n_cells,bounfile,time,sol,"U")
 writeTensorVolType(gradUxx,gradUxy,gradUxz,gradUyx,gradUyy,gradUyz,gradUzx,gradUzy,gradUzz,n_cells,bounfile,time,sol,"gradU")
 
+writeScalarSurfaceType(rhoPhi,n_internal_faces,bounfile,time,sol,"rhoPhi")
 writeScalarSurfaceType(alphaf,n_internal_faces,bounfile,time,sol,"alphaf")
 writeScalarSurfaceType(magSf,n_internal_faces,bounfile,time,sol,"magSf")
 writeVectorSurfaceType(Cfx,Cfy,Cfz,n_internal_faces,bounfile,time,sol,"Cf")
