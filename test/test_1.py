@@ -598,7 +598,7 @@ for facei in range(len(ownerfile.values)):
 
 A[:n_cells] = A[:n_cells]/vols + rho1[:n_cells]/dt
 
-# calculate H (boundary values are zero)
+# calculate H 
 Hx = np.zeros(total_vol_array_size)
 Hy = np.zeros(total_vol_array_size)
 Hz = np.zeros(total_vol_array_size)
@@ -617,14 +617,15 @@ for facei in range(len(ownerfile.values)):
     dev2_gradU_t_zy = gradUyzf[facei]
     dev2_gradU_t_zz = gradUzzf[facei] - 2./3.0*divU
 
+    # (internal face contribution)
     if facei < n_internal_faces:
         wn = weights[facei]
         wo = 1.0 - wn
         delta = deltaCoeffs[facei]
         # convection (owner)
-        Hx[celli_o] -= rhof_phi[facei]*wn*Ux1[celli_n]
-        Hy[celli_o] -= rhof_phi[facei]*wn*Uy1[celli_n]
-        Hz[celli_o] -= rhof_phi[facei]*wn*Uz1[celli_n]
+        Hx[celli_o] += -rhof_phi[facei]*wn*Ux1[celli_n]
+        Hy[celli_o] += -rhof_phi[facei]*wn*Uy1[celli_n]
+        Hz[celli_o] += -rhof_phi[facei]*wn*Uz1[celli_n]
         # conduction (owner)
         Hx[celli_o] += rhof_nuf[facei]*delta*magSf[facei]*Ux1[celli_n]
         Hy[celli_o] += rhof_nuf[facei]*delta*magSf[facei]*Uy1[celli_n]
@@ -644,24 +645,72 @@ for facei in range(len(ownerfile.values)):
         Hy[celli_n] += rhof_nuf[facei]*delta*magSf[facei]*Uy1[celli_o]
         Hz[celli_n] += rhof_nuf[facei]*delta*magSf[facei]*Uz1[celli_o]
         # dev2(neigh)
-        Hx[celli_n] -= rhof_nuf[facei]*(Sfx[facei]*dev2_gradU_t_xx + Sfy[facei]*dev2_gradU_t_yx + Sfz[facei]*dev2_gradU_t_zx)
-        Hy[celli_n] -= rhof_nuf[facei]*(Sfx[facei]*dev2_gradU_t_xy + Sfy[facei]*dev2_gradU_t_yy + Sfz[facei]*dev2_gradU_t_zy)
-        Hz[celli_n] -= rhof_nuf[facei]*(Sfx[facei]*dev2_gradU_t_xz + Sfy[facei]*dev2_gradU_t_yz + Sfz[facei]*dev2_gradU_t_zz)
-
+        Hx[celli_n] += -rhof_nuf[facei]*(Sfx[facei]*dev2_gradU_t_xx + Sfy[facei]*dev2_gradU_t_yx + Sfz[facei]*dev2_gradU_t_zx)
+        Hy[celli_n] += -rhof_nuf[facei]*(Sfx[facei]*dev2_gradU_t_xy + Sfy[facei]*dev2_gradU_t_yy + Sfz[facei]*dev2_gradU_t_zy)
+        Hz[celli_n] += -rhof_nuf[facei]*(Sfx[facei]*dev2_gradU_t_xz + Sfy[facei]*dev2_gradU_t_yz + Sfz[facei]*dev2_gradU_t_zz)
+    # (boundary contribution)
     else:
         # account for the boundary contribution (take values from boundary)
-        # convection
-        Hx[celli_o] -= rhof_phi[facei]*Ufx[facei]
-        Hy[celli_o] -= rhof_phi[facei]*Ufy[facei]
-        Hz[celli_o] -= rhof_phi[facei]*Ufz[facei]
-        # conduction
-        Hx[celli_o] += rhof_nuf[facei]*(Sfx[facei]*gradUxxf[facei]+Sfy[facei]*gradUyxf[facei]+Sfz[facei]*gradUzxf[facei])
-        Hy[celli_o] += rhof_nuf[facei]*(Sfx[facei]*gradUxyf[facei]+Sfy[facei]*gradUyyf[facei]+Sfz[facei]*gradUzyf[facei])
-        Hz[celli_o] += rhof_nuf[facei]*(Sfx[facei]*gradUxzf[facei]+Sfy[facei]*gradUyzf[facei]+Sfz[facei]*gradUzzf[facei])
-        # dev2
+        # convection (contribute through boundary condition)
+        #Hx[celli_o] -= rhof_phi[facei]*Ufx[facei]
+        #Hy[celli_o] -= rhof_phi[facei]*Ufy[facei]
+        #Hz[celli_o] -= rhof_phi[facei]*Ufz[facei]
+        ## conduction (contribute through boundary condition)
+        #Hx[celli_o] += rhof_nuf[facei]*(Sfx[facei]*gradUxxf[facei]+Sfy[facei]*gradUyxf[facei]+Sfz[facei]*gradUzxf[facei])
+        #Hy[celli_o] += rhof_nuf[facei]*(Sfx[facei]*gradUxyf[facei]+Sfy[facei]*gradUyyf[facei]+Sfz[facei]*gradUzyf[facei])
+        #Hz[celli_o] += rhof_nuf[facei]*(Sfx[facei]*gradUxzf[facei]+Sfy[facei]*gradUyzf[facei]+Sfz[facei]*gradUzzf[facei])
+        ## dev2
         Hx[celli_o] += rhof_nuf[facei]*(Sfx[facei]*dev2_gradU_t_xx + Sfy[facei]*dev2_gradU_t_yx + Sfz[facei]*dev2_gradU_t_zx)
         Hy[celli_o] += rhof_nuf[facei]*(Sfx[facei]*dev2_gradU_t_xy + Sfy[facei]*dev2_gradU_t_yy + Sfz[facei]*dev2_gradU_t_zy)
         Hz[celli_o] += rhof_nuf[facei]*(Sfx[facei]*dev2_gradU_t_xz + Sfy[facei]*dev2_gradU_t_yz + Sfz[facei]*dev2_gradU_t_zz)
+
+        # noSlip boundary condition
+        f = 1.0
+        vol_facei = facei-n_internal_faces+n_cells
+        U_ref_x = Ufx[facei]
+        U_ref_y = Ufy[facei]
+        U_ref_z = Ufz[facei]
+        g_ref_x = gradUxxf[facei]*nx[facei] + gradUxyf[facei]*ny[facei] + gradUxzf[facei]*nz[facei]
+        g_ref_y = gradUyxf[facei]*nx[facei] + gradUyyf[facei]*ny[facei] + gradUyzf[facei]*nz[facei]
+        g_ref_z = gradUzxf[facei]*nx[facei] + gradUzyf[facei]*ny[facei] + gradUzzf[facei]*nz[facei]
+        boundary_name = 'leftWall'
+        start_face = dict_boundary_start_face_surface_field[boundary_name]
+        end_face = dict_boundary_end_face_surface_field[boundary_name]
+        if facei < end_face and facei >= start_face:
+            Hx[celli_o] += -rhof_phi[facei]*(f*U_ref_x+(1.0-f)*g_ref_x*delta) + rhof_nuf[facei]*magSf[facei]*(f*U_ref_x*delta+(1.0-f)*g_ref_x)
+            Hy[celli_o] += -rhof_phi[facei]*(f*U_ref_y+(1.0-f)*g_ref_y*delta) + rhof_nuf[facei]*magSf[facei]*(f*U_ref_y*delta+(1.0-f)*g_ref_y)
+            Hz[celli_o] += -rhof_phi[facei]*(f*U_ref_z+(1.0-f)*g_ref_z*delta) + rhof_nuf[facei]*magSf[facei]*(f*U_ref_z*delta+(1.0-f)*g_ref_z)
+        boundary_name = 'rightWall'
+        start_face = dict_boundary_start_face_surface_field[boundary_name]
+        end_face = dict_boundary_end_face_surface_field[boundary_name]
+        if facei < end_face and facei >= start_face:
+            Hx[celli_o] += -rhof_phi[facei]*(f*U_ref_x+(1.0-f)*g_ref_x*delta) + rhof_nuf[facei]*magSf[facei]*(f*U_ref_x*delta+(1.0-f)*g_ref_x)
+            Hy[celli_o] += -rhof_phi[facei]*(f*U_ref_y+(1.0-f)*g_ref_y*delta) + rhof_nuf[facei]*magSf[facei]*(f*U_ref_y*delta+(1.0-f)*g_ref_y)
+            Hz[celli_o] += -rhof_phi[facei]*(f*U_ref_z+(1.0-f)*g_ref_z*delta) + rhof_nuf[facei]*magSf[facei]*(f*U_ref_z*delta+(1.0-f)*g_ref_z)
+        boundary_name = 'lowerWall'
+        start_face = dict_boundary_start_face_surface_field[boundary_name]
+        end_face = dict_boundary_end_face_surface_field[boundary_name]
+        if facei < end_face and facei >= start_face:
+            Hx[celli_o] += -rhof_phi[facei]*(f*U_ref_x+(1.0-f)*g_ref_x*delta) + rhof_nuf[facei]*magSf[facei]*(f*U_ref_x*delta+(1.0-f)*g_ref_x)
+            Hy[celli_o] += -rhof_phi[facei]*(f*U_ref_y+(1.0-f)*g_ref_y*delta) + rhof_nuf[facei]*magSf[facei]*(f*U_ref_y*delta+(1.0-f)*g_ref_y)
+            Hz[celli_o] += -rhof_phi[facei]*(f*U_ref_z+(1.0-f)*g_ref_z*delta) + rhof_nuf[facei]*magSf[facei]*(f*U_ref_z*delta+(1.0-f)*g_ref_z)
+        # pressureInletOutletVelocity boundary condition
+        boundary_name = 'atmosphere'
+        start_face = dict_boundary_start_face_surface_field[boundary_name]
+        end_face = dict_boundary_end_face_surface_field[boundary_name]
+        if facei < end_face and facei >= start_face:
+            if phi[facei] <= 0.0:
+                tau_n_x = np.sqrt(np.fabs(1.0 - nx[facei]*nx[facei]))
+                tau_n_y = np.sqrt(np.fabs(1.0 - ny[facei]*ny[facei]))
+                tau_n_z = np.sqrt(np.fabs(1.0 - nz[facei]*nz[facei]))
+            else:
+                tau_n_x = 0.0
+                tau_n_y = 0.0
+                tau_n_z = 0.0
+            f = (tau_n_x + tau_n_y + tau_n_z)/3.0
+            Hx[celli_o] += -rhof_phi[facei]*(U_ref_x-(1.0-tau_n_x)*Ux1[celli_o]) + rhof_nuf[facei]*magSf[facei]*(g_ref_x + tau_n_x*Ux1[celli_o]*delta)
+            Hy[celli_o] += -rhof_phi[facei]*(U_ref_y-(1.0-tau_n_y)*Uy1[celli_o]) + rhof_nuf[facei]*magSf[facei]*(g_ref_y + tau_n_y*Uy1[celli_o]*delta)
+            Hz[celli_o] += -rhof_phi[facei]*(U_ref_z-(1.0-tau_n_z)*Uz1[celli_o]) + rhof_nuf[facei]*magSf[facei]*(g_ref_z + tau_n_z*Uz1[celli_o]*delta)
 
 Hx[:n_cells] = Hx[:n_cells]/vols + rho0[:n_cells]*Ux0[:n_cells]/dt
 Hy[:n_cells] = Hy[:n_cells]/vols + rho0[:n_cells]*Uy0[:n_cells]/dt
