@@ -405,7 +405,9 @@ gradPrghzf = np.zeros(total_surface_array_size)
 gradRhoxf = np.zeros(total_surface_array_size)
 gradRhoyf = np.zeros(total_surface_array_size)
 gradRhozf = np.zeros(total_surface_array_size)
+snGradPrgh = np.zeros(total_surface_array_size)
 snGradRho = np.zeros(total_surface_array_size)
+snGradAlpha = np.zeros(total_surface_array_size)
 
 # looping over internal faces
 for facei in range(len(ownerfile.values)):
@@ -413,9 +415,13 @@ for facei in range(len(ownerfile.values)):
     delta = deltaCoeffs[facei]
     if facei < n_internal_faces:
         celli_n = neighfile.values[facei]
+        snGradPrgh[facei] = delta*(prgh1[celli_n]-prgh1[celli_o])
         snGradRho[facei] = delta*(rho1[celli_n]-rho1[celli_o])
+        snGradAlpha[facei] = delta*(alpha1[celli_n]-alpha1[celli_o])
     else:
+        snGradPrgh[facei] = delta*(prghf[facei]-prgh1[celli_o])
         snGradRho[facei] = delta*(rhof[facei]-rho1[celli_o])
+        snGradAlpha[facei] = delta*(alphaf[facei]-alpha1[celli_o])
 
 # looping over internal faces
 for i in range(len(neighfile.values)):
@@ -707,7 +713,6 @@ for facei in range(len(ownerfile.values)):
                 tau_n_x = 0.0
                 tau_n_y = 0.0
                 tau_n_z = 0.0
-            f = (tau_n_x + tau_n_y + tau_n_z)/3.0
             Hx[celli_o] += -rhof_phi[facei]*(U_ref_x-(1.0-tau_n_x)*Ux1[celli_o]) + rhof_nuf[facei]*magSf[facei]*(g_ref_x + tau_n_x*Ux1[celli_o]*delta)
             Hy[celli_o] += -rhof_phi[facei]*(U_ref_y-(1.0-tau_n_y)*Uy1[celli_o]) + rhof_nuf[facei]*magSf[facei]*(g_ref_y + tau_n_y*Uy1[celli_o]*delta)
             Hz[celli_o] += -rhof_phi[facei]*(U_ref_z-(1.0-tau_n_z)*Uz1[celli_o]) + rhof_nuf[facei]*magSf[facei]*(g_ref_z + tau_n_z*Uz1[celli_o]*delta)
@@ -775,29 +780,40 @@ HByA_f_y[n_internal_faces:] = HByA_y[n_cells:]
 HByA_f_z[n_internal_faces:] = HByA_z[n_cells:]
 
 pdeMomentumPrghError = np.zeros(total_vol_array_size)
+pdeMomentumPrghError2 = np.zeros(total_vol_array_size)
 gx = 0.0
 gy = -9.81
 gz = 0.0
 sigma = 0.07
+
+phiPrgh = snGradPrgh*magSf*rAf
+phiHByA = Sfx*HByA_f_x + Sfy*HByA_f_y + Sfz*HByA_f_z
+phig = -(gx*Cfx + gy*Cfy + gz*Cfz)*snGradRho*magSf*rAf
+phiSurfaceTension = snGradAlpha*magSf*kappaf*sigma*rAf
+
 for facei in range(len(ownerfile.values)):
     celli_o = ownerfile.values[facei]
     pdeMomentumPrghError[celli_o] += (Sfx[facei]*gradPrghxf[facei] + Sfy[facei]*gradPrghyf[facei] + Sfz[facei]*gradPrghzf[facei])*rAf[facei]
     pdeMomentumPrghError[celli_o] -= Sfx[facei]*HByA_f_x[facei] + Sfy[facei]*HByA_f_y[facei] + Sfz[facei]*HByA_f_z[facei]
     pdeMomentumPrghError[celli_o] += (Sfx[facei]*gx*Cfx[facei]*gradRhoxf[facei] + Sfy[facei]*gy*Cfy[facei]*gradRhoyf[facei] + Sfz[facei]*gz*Cfz[facei]*gradRhozf[facei])*rAf[facei]
     pdeMomentumPrghError[celli_o] -= (Sfx[facei]*gradAlphaxf[facei] + Sfy[facei]*gradAlphayf[facei] + Sfz[facei]*gradAlphazf[facei])*kappaf[facei]*sigma*rAf[facei]
+    pdeMomentumPrghError2[celli_o] += phiPrgh[facei]-phiHByA[facei]+phig[facei]-phiSurfaceTension[facei]
     if facei < n_internal_faces:
         celli_n = neighfile.values[facei]
-        pdeMomentumPrghError[celli_o] -= (Sfx[facei]*gradPrghxf[facei] + Sfy[facei]*gradPrghyf[facei] + Sfz[facei]*gradPrghzf[facei])*rAf[facei]
-        pdeMomentumPrghError[celli_o] += Sfx[facei]*HByA_f_x[facei] + Sfy[facei]*HByA_f_y[facei] + Sfz[facei]*HByA_f_z[facei]
-        pdeMomentumPrghError[celli_o] -= (Sfx[facei]*gx*Cfx[facei]*gradRhoxf[facei] + Sfy[facei]*gy*Cfy[facei]*gradRhoyf[facei] + Sfz[facei]*gz*Cfz[facei]*gradRhozf[facei])*rAf[facei]
-        pdeMomentumPrghError[celli_o] += (Sfx[facei]*gradAlphaxf[facei] + Sfy[facei]*gradAlphayf[facei] + Sfz[facei]*gradAlphazf[facei])*kappaf[facei]*sigma*rAf[facei]
+        pdeMomentumPrghError[celli_n] -= (Sfx[facei]*gradPrghxf[facei] + Sfy[facei]*gradPrghyf[facei] + Sfz[facei]*gradPrghzf[facei])*rAf[facei]
+        pdeMomentumPrghError[celli_n] += Sfx[facei]*HByA_f_x[facei] + Sfy[facei]*HByA_f_y[facei] + Sfz[facei]*HByA_f_z[facei]
+        pdeMomentumPrghError[celli_n] -= (Sfx[facei]*gx*Cfx[facei]*gradRhoxf[facei] + Sfy[facei]*gy*Cfy[facei]*gradRhoyf[facei] + Sfz[facei]*gz*Cfz[facei]*gradRhozf[facei])*rAf[facei]
+        pdeMomentumPrghError[celli_n] += (Sfx[facei]*gradAlphaxf[facei] + Sfy[facei]*gradAlphayf[facei] + Sfz[facei]*gradAlphazf[facei])*kappaf[facei]*sigma*rAf[facei]
+    pdeMomentumPrghError2[celli_n] -= phiPrgh[facei]-phiHByA[facei]+phig[facei]-phiSurfaceTension[facei]
 
+print(np.max(pdeMomentumPrghError[:n_cells]),np.min(pdeMomentumPrghError[:n_cells]),np.max(vols))
+print(np.max(pdeMomentumPrghError2[:n_cells]),np.min(pdeMomentumPrghError2[:n_cells]),np.max(vols))
 pdeMomentumPrghError[:n_cells] = pdeMomentumPrghError[:n_cells]/vols
-
-phig = -(gx*Cfx + gy*Cfy + gz*Cfz)*snGradRho*magSf*rAf
+pdeMomentumPrghError2[:n_cells] = pdeMomentumPrghError2[:n_cells]/vols
 
 time = data_dict[1]["time"]
 writeScalarVolType(pdeMomentumPrghError,n_cells,bounfile,time,sol,"pdeMomentumPrghError")
+writeScalarVolType(pdeMomentumPrghError2,n_cells,bounfile,time,sol,"pdeMomentumPrghError2")
 writeScalarVolType(rho1,n_cells,bounfile,time,sol,"rho")
 writeScalarVolType(nu1,n_cells,bounfile,time,sol,"nu")
 writeScalarVolType(A,n_cells,bounfile,time,sol,"UEqnA")
@@ -822,5 +838,10 @@ writeVectorSurfaceType(Ufx,Ufy,Ufz,n_internal_faces,bounfile,time,sol,"Uf")
 writeVectorSurfaceType(Sfx,Sfy,Sfz,n_internal_faces,bounfile,time,sol,"Sf")
 writeScalarSurfaceType(kappaf,n_internal_faces,bounfile,time,sol,"kappaf")
 writeScalarSurfaceType(phig,n_internal_faces,bounfile,time,sol,"phig")
+writeScalarSurfaceType(phiSurfaceTension,n_internal_faces,bounfile,time,sol,"phiSurfaceTension")
+writeScalarSurfaceType(phiHByA,n_internal_faces,bounfile,time,sol,"phiHByA")
+writeScalarSurfaceType(phiPrgh,n_internal_faces,bounfile,time,sol,"phiPrgh")
 writeScalarSurfaceType(snGradRho,n_internal_faces,bounfile,time,sol,"snGradRho")
+writeScalarSurfaceType(snGradAlpha,n_internal_faces,bounfile,time,sol,"snGradAlpha")
+writeScalarSurfaceType(snGradPrgh,n_internal_faces,bounfile,time,sol,"snGradPrgh")
 writeVectorSurfaceType(gradAlphaxf,gradAlphayf,gradAlphazf,n_internal_faces,bounfile,time,sol,"gradAlphaf")
