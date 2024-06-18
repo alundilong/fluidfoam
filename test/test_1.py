@@ -31,8 +31,12 @@ print(len(neighfile.values))
 bounfile = OpenFoamFile(sol+"/constant/polyMesh",name="boundary",verbose=False)
 print(bounfile.boundaryface)
 boundary_names = list(bounfile.boundaryface.keys())
-dict_boundary_start_face = {}
-dict_boundary_end_face = {}
+dict_boundary_start_face_surface_field = {}
+dict_boundary_end_face_surface_field = {}
+
+dict_boundary_start_face_vol_field = {}
+dict_boundary_end_face_vol_field = {}
+
 for name in boundary_names:
     key = name.decode('utf-8')
     xs,ys,zs = readmesh(sol,boundary=key)
@@ -41,8 +45,11 @@ for name in boundary_names:
     total_vol_array_size += n_faces
     total_boundary_face_size += n_faces
     print(f'{key}: {len(xs)} {len(ys)} {len(zs)}, startFace:{n_start_face}, nFaces:{n_faces}')
-    dict_boundary_start_face[key] = n_start_face - n_internal_faces + n_cells
-    dict_boundary_end_face[key] = n_start_face + n_faces - n_internal_faces + n_cells
+    dict_boundary_start_face_vol_field[key] = n_start_face - n_internal_faces + n_cells
+    dict_boundary_end_face_vol_field[key] = n_start_face + n_faces - n_internal_faces + n_cells
+
+    dict_boundary_start_face_surface_field[key] = n_start_face
+    dict_boundary_end_face_surface_field[key] = n_start_face + n_faces
 
 ownerfile = OpenFoamFile(sol+"/constant/polyMesh",name="owner",verbose=False)
 print(ownerfile.nb_cell, ownerfile.nb_faces)
@@ -538,20 +545,56 @@ kappa[:n_cells] = kappa[:n_cells]/vols
 #print(f"max/min:{max(gradUzz)} {min(gradUzz)}")
 #print(f"(weights)max/min:{max(weights[:n_internal_faces])} {min(weights[:n_internal_faces])}")
 
-# calculate A (boundary values are zero)
+# calculate A 
 A = np.zeros(total_vol_array_size)
-for facei in range(len(neighfile.values)):
+for facei in range(len(ownerfile.values)):
     celli_o = ownerfile.values[facei]
     wn = weights[facei]
     wo = 1.0 - wn
     delta = deltaCoeffs[facei]
-    A[celli_o] += rhof_phi[facei]*wo
-    A[celli_o] += rhof_nuf[facei]*delta*magSf[facei]
+    # (internal face contribution)
+    if facei < n_internal_faces:
+        A[celli_o] += rhof_phi[facei]*wo
+        A[celli_o] += rhof_nuf[facei]*delta*magSf[facei]
 
-    #if facei < n_internal_faces:
-    celli_n = neighfile.values[facei]
-    A[celli_n] -= rhof_phi[facei]*wn
-    A[celli_n] += rhof_nuf[facei]*delta*magSf[facei]
+        #if facei < n_internal_faces:
+        celli_n = neighfile.values[facei]
+        A[celli_n] -= rhof_phi[facei]*wn
+        A[celli_n] += rhof_nuf[facei]*delta*magSf[facei]
+    # (boundary contribution)
+    else:
+        # noSlip boundary condition
+        f = 1.0
+        boundary_name = 'leftWall'
+        start_face = dict_boundary_start_face_surface_field[boundary_name]
+        end_face = dict_boundary_end_face_surface_field[boundary_name]
+        if facei < end_face and facei >= start_face:
+            A[celli_o] += rhof_phi[facei]*(1.0 - f) + rhof_nuf[facei]*delta*magSf[facei]*f
+        boundary_name = 'rightWall'
+        start_face = dict_boundary_start_face_surface_field[boundary_name]
+        end_face = dict_boundary_end_face_surface_field[boundary_name]
+        if facei < end_face and facei >= start_face:
+            A[celli_o] += rhof_phi[facei]*(1.0 - f) + rhof_nuf[facei]*delta*magSf[facei]*f
+        boundary_name = 'lowerWall'
+        start_face = dict_boundary_start_face_surface_field[boundary_name]
+        end_face = dict_boundary_end_face_surface_field[boundary_name]
+        if facei < end_face and facei >= start_face:
+            A[celli_o] += rhof_phi[facei]*(1.0 - f) + rhof_nuf[facei]*delta*magSf[facei]*f
+        # pressureInletOutletVelocity boundary condition
+        boundary_name = 'atmosphere'
+        start_face = dict_boundary_start_face_surface_field[boundary_name]
+        end_face = dict_boundary_end_face_surface_field[boundary_name]
+        if facei < end_face and facei >= start_face:
+            if phi[facei] <= 0.0:
+                tau_n_x = np.sqrt(np.fabs(1.0 - nx[facei]*nx[facei]))
+                tau_n_y = np.sqrt(np.fabs(1.0 - ny[facei]*ny[facei]))
+                tau_n_z = np.sqrt(np.fabs(1.0 - nz[facei]*nz[facei]))
+            else:
+                tau_n_x = 0.0
+                tau_n_y = 0.0
+                tau_n_z = 0.0
+            f = (tau_n_x + tau_n_y + tau_n_z)/3.0
+            A[celli_o] += rhof_phi[facei]*(1.0 - f) + rhof_nuf[facei]*delta*magSf[facei]*f
 
 A[:n_cells] = A[:n_cells]/vols + rho1[:n_cells]/dt
 
@@ -638,22 +681,22 @@ HByA_z = Hz/A
 
 # handle HByA (U not assignable and p not fixedfluxextrapolatedpressurefvpatchscalarfield)
 boundary_name = 'leftWall'
-start_face = dict_boundary_start_face[boundary_name]
-end_face = dict_boundary_start_face[boundary_name]
+start_face = dict_boundary_start_face_vol_field[boundary_name]
+end_face = dict_boundary_end_face_vol_field[boundary_name]
 HByA_x[start_face:end_face] = Ux1[start_face:end_face]
 HByA_y[start_face:end_face] = Uy1[start_face:end_face]
 HByA_z[start_face:end_face] = Uz1[start_face:end_face]
 
 boundary_name = 'rightWall'
-start_face = dict_boundary_start_face[boundary_name]
-end_face = dict_boundary_start_face[boundary_name]
+start_face = dict_boundary_start_face_vol_field[boundary_name]
+end_face = dict_boundary_end_face_vol_field[boundary_name]
 HByA_x[start_face:end_face] = Ux1[start_face:end_face]
 HByA_y[start_face:end_face] = Uy1[start_face:end_face]
 HByA_z[start_face:end_face] = Uz1[start_face:end_face]
 
 boundary_name = 'lowerWall'
-start_face = dict_boundary_start_face[boundary_name]
-end_face = dict_boundary_start_face[boundary_name]
+start_face = dict_boundary_start_face_vol_field[boundary_name]
+end_face = dict_boundary_end_face_vol_field[boundary_name]
 HByA_x[start_face:end_face] = Ux1[start_face:end_face]
 HByA_y[start_face:end_face] = Uy1[start_face:end_face]
 HByA_z[start_face:end_face] = Uz1[start_face:end_face]
