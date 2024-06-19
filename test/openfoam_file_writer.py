@@ -344,3 +344,66 @@ internalField   nonuniform List<vector>
     content += get_vector_field(numbers_x, numbers_y, numbers_z)
 
     return content
+
+########################surfaceTensorTypeField#############################
+def writeTensorSurfaceType(xx,xy,xz,yx,yy,yz,zx,zy,zz, n_internal_faces, bounfile, time, sol, field_name):
+    boundary_names = list(bounfile.boundaryface.keys())
+    content = internal_surface_tensor_field(xx[0:n_internal_faces],xy[0:n_internal_faces],xz[0:n_internal_faces],\
+                                            yx[0:n_internal_faces],yy[0:n_internal_faces],yz[0:n_internal_faces],\
+                                            zx[0:n_internal_faces],zy[0:n_internal_faces],zz[0:n_internal_faces],\
+                                            time,field_name)
+
+    # boundaryfield
+    content += "boundaryField\n{\n"
+    start = n_internal_faces
+    end = start
+    for name in boundary_names:
+        key = name.decode('utf-8')
+        bc_type = bounfile.boundaryface[str.encode(key)][b'type'].decode('utf-8')
+        n_faces = int(bounfile.boundaryface[str.encode(key)][b'nFaces'])
+        end += n_faces
+        if 'empty' not in bc_type:
+            #print(f"start:{start}, end:{end}")
+            content += "\t"+f"{key}"+"\n\t{\n"
+            content += "\t\ttype\t\tcalculated;\n"
+            content += "\t\tvalue\t\tnonuniform List<vector>\n"
+            content += get_tensor_field(xx[start:end],xy[start:end],xz[start:end],\
+                    yx[start:end],yy[start:end],yz[start:end],\
+                    zx[start:end],zy[start:end],zz[start:end])
+            content += "\t}\n"
+        else:
+            content += "\t"+f"{key}"+"\n\t{\n"
+            content += "\t\ttype\t\tempty;\n"
+            content += "\t}\n"
+        start = end
+
+    content += "}\n"
+
+    file_name = field_name+"_fluidfoam"
+    with open(f"{sol}/{time}/{file_name}", "w") as file:
+        file.write(content)
+
+def internal_surface_tensor_field(xx,xy,xz,yx,yy,yz,zx,zy,zz,time,field_name):
+    # Create the base content with placeholders for numbers
+    content = """/*--------------------------------*- C++ -*----------------------------------*\\
+  =========                 |
+  \\      /  F ield         | OpenFOAM: The Open Source CFD Toolbox
+   \\    /   O peration     | Website:  https://openfoam.org
+    \\  /    A nd           | Version:  6
+     \\/     M anipulation  |
+\*---------------------------------------------------------------------------*/
+FoamFile
+{
+    version     2.0;
+    format      ascii;
+    class       surfaceTensorField;"""+f"\n\tlocation    \"{time}\";"+f"\n\tobject      {field_name}_fluidfoam;\n"+"""}
+// * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * //
+
+dimensions  [0 0 0 0 0 0 0];
+
+internalField   nonuniform List<vector>
+"""
+    # Append the number of items and the list of numbers
+    content += get_tensor_field(xx,xy,xz,yx,yy,yz,zx,zy,zz)
+
+    return content
