@@ -751,6 +751,10 @@ for facei in range(len(ownerfile.values)):
             Hy[celli_o] += -rhof_phi[facei]*(U_ref_y-(1.0-tau_n_y)*Uy1[celli_o]) + rhof_nuf[facei]*magSf[facei]*(g_ref_y + tau_n_y*Uy1[celli_o]*delta)
             Hz[celli_o] += -rhof_phi[facei]*(U_ref_z-(1.0-tau_n_z)*Uz1[celli_o]) + rhof_nuf[facei]*magSf[facei]*(g_ref_z + tau_n_z*Uz1[celli_o]*delta)
 
+rhoUByDeltaT_x_oldTime = rho0[:n_cells]*Ux0[:n_cells]/dt
+rhoUByDeltaT_y_oldTime = rho0[:n_cells]*Uy0[:n_cells]/dt
+rhoUByDeltaT_z_oldTime = rho0[:n_cells]*Uz0[:n_cells]/dt
+
 Hx[:n_cells] = Hx[:n_cells]/vols + rho0[:n_cells]*Ux0[:n_cells]/dt
 Hy[:n_cells] = Hy[:n_cells]/vols + rho0[:n_cells]*Uy0[:n_cells]/dt
 Hz[:n_cells] = Hz[:n_cells]/vols + rho0[:n_cells]*Uz0[:n_cells]/dt
@@ -866,6 +870,7 @@ writeVectorVolType(gradAlphax,gradAlphay,gradAlphaz,n_cells,bounfile,time,sol,"g
 writeVectorVolType(gradPrghx,gradPrghy,gradPrghz,n_cells,bounfile,time,sol,"gradPrgh")
 writeVectorVolType(gradRhox,gradRhoy,gradRhoz,n_cells,bounfile,time,sol,"gradRho")
 writeVectorVolType(Ux1,Uy1,Uz1,n_cells,bounfile,time,sol,"U")
+writeVectorVolType(rhoUByDeltaT_x_oldTime,rhoUByDeltaT_y_oldTime,rhoUByDeltaT_y_oldTime,n_cells,bounfile,time,sol,"rhoUByDeltaT_oldTime")
 writeTensorVolType(gradUxx,gradUxy,gradUxz,gradUyx,gradUyy,gradUyz,gradUzx,gradUzy,gradUzz,n_cells,bounfile,time,sol,"gradU")
 
 writeScalarSurfaceType(rhof,n_internal_faces,bounfile,time,sol,"rhof")
