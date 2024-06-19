@@ -4,8 +4,8 @@ sys.path.insert(0,'../')
 import numpy as np
 from fluidfoam import readmesh, readscalar, readvector, OpenFoamFile, getVolumes
 from openfoam_file_loader import readScalarVolType, readScalarSurfaceType, readVectorVolType, readVectorSurfaceType
-from openfoam_file_writer import writeScalarVolType, writeVectorVolType, writeTensorVolType,writeScalarSurfaceType
-from openfoam_file_writer import writeScalarSurfaceType, writeVectorSurfaceType #, writeTensorSurfaceType
+from openfoam_file_writer import writeScalarVolType, writeVectorVolType, writeTensorVolType
+from openfoam_file_writer import writeScalarSurfaceType, writeVectorSurfaceType, writeTensorSurfaceType
 
 #####################################################
 sol = '../../../../cases/damBreak_simple/'
@@ -619,6 +619,17 @@ A[:n_cells] = A[:n_cells]/vols + rho1[:n_cells]/dt
 Hx = np.zeros(total_vol_array_size)
 Hy = np.zeros(total_vol_array_size)
 Hz = np.zeros(total_vol_array_size)
+dev2_gradUT_xx = np.zeros(total_surface_array_size)
+dev2_gradUT_xy = np.zeros(total_surface_array_size)
+dev2_gradUT_xz = np.zeros(total_surface_array_size)
+
+dev2_gradUT_yx = np.zeros(total_surface_array_size)
+dev2_gradUT_yy = np.zeros(total_surface_array_size)
+dev2_gradUT_yz = np.zeros(total_surface_array_size)
+
+dev2_gradUT_zx = np.zeros(total_surface_array_size)
+dev2_gradUT_zy = np.zeros(total_surface_array_size)
+dev2_gradUT_zz = np.zeros(total_surface_array_size)
 for facei in range(len(ownerfile.values)):
     celli_o = ownerfile.values[facei]
     divU = gradUxxf[facei] + gradUyyf[facei] + gradUzzf[facei]
@@ -626,13 +637,25 @@ for facei in range(len(ownerfile.values)):
     dev2_gradU_t_xy = gradUyxf[facei]
     dev2_gradU_t_xz = gradUzxf[facei]
 
+    dev2_gradUT_xx[facei] = dev2_gradU_t_xx
+    dev2_gradUT_xy[facei] = dev2_gradU_t_xy
+    dev2_gradUT_xz[facei] = dev2_gradU_t_xz
+
     dev2_gradU_t_yx = gradUxyf[facei]
     dev2_gradU_t_yy = gradUyyf[facei] - 2./3.0*divU
     dev2_gradU_t_yz = gradUzyf[facei]
 
+    dev2_gradUT_yx[facei] = dev2_gradU_t_yx
+    dev2_gradUT_yy[facei] = dev2_gradU_t_yy
+    dev2_gradUT_yz[facei] = dev2_gradU_t_yz
+
     dev2_gradU_t_zx = gradUxzf[facei]
     dev2_gradU_t_zy = gradUyzf[facei]
     dev2_gradU_t_zz = gradUzzf[facei] - 2./3.0*divU
+
+    dev2_gradUT_zx[facei] = dev2_gradU_t_zx
+    dev2_gradUT_zy[facei] = dev2_gradU_t_zy
+    dev2_gradUT_zz[facei] = dev2_gradU_t_zz
 
     # (internal face contribution)
     if facei < n_internal_faces:
@@ -870,3 +893,7 @@ writeScalarSurfaceType(magGradAlphaf,n_internal_faces,bounfile,time,sol,"magGrad
 writeVectorSurfaceType(n_hatf_x,n_hatf_y,n_hatf_z,n_internal_faces,bounfile,time,sol,"nHatfv")
 writeScalarSurfaceType(n_hatf,n_internal_faces,bounfile,time,sol,"nHatf")
 writeScalarSurfaceType(sigmaKf,n_internal_faces,bounfile,time,sol,"sigmaKf")
+writeTensorSurfaceType(dev2_gradUT_xx,dev2_gradUT_xy,dev2_gradUT_xz,\
+                       dev2_gradUT_yx,dev2_gradUT_yy,dev2_gradUT_yz,\
+                       dev2_gradUT_zx,dev2_gradUT_zy,dev2_gradUT_zz,\
+                       n_internal_faces,bounfile,time,sol,"dev2_graUT")
