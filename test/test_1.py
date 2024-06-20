@@ -463,9 +463,9 @@ for i in range(len(neighfile.values)):
     gradRhozf[i] = wo*gradRhoz[celli_o] + wn*gradRhoz[celli_n]
 
 # loop over faces at boundaries (boundary condition can be applied here!!!)
-nx = Sfx/(magSf+1.0e-16)
-ny = Sfy/(magSf+1.0e-16)
-nz = Sfz/(magSf+1.0e-16)
+nx = Sfx/(magSf+1.0e-20)
+ny = Sfy/(magSf+1.0e-20)
+nz = Sfz/(magSf+1.0e-20)
 for facei in range(len(neighfile.values), len(ownerfile.values),1):
     celli_o = ownerfile.values[facei]
 
@@ -620,6 +620,9 @@ for facei in range(len(ownerfile.values)):
                 tau_n_y = 0.0
                 tau_n_z = 0.0
             f = (tau_n_x + tau_n_y + tau_n_z)/3.0
+            vI = 1-f
+            gI = f*delta
+            print(f'valueInternal: {vI}, gradInternal: {gI}')
             A[celli_o] += rhof_phi[facei]*(1.0 - f) + rhof_nuf[facei]*delta*magSf[facei]*f
 
 A[:n_cells] = A[:n_cells]/vols + rho1[:n_cells]/dt
@@ -711,6 +714,10 @@ for facei in range(len(ownerfile.values)):
         g_ref_x = snGradU_x[facei]
         g_ref_y = snGradU_y[facei]
         g_ref_z = snGradU_z[facei]
+        #g_ref_x = 0.0
+        #g_ref_y = 0.0
+        #g_ref_z = 0.0
+
         # account for the boundary contribution (take values from boundary)
         # convection (contribute through boundary condition)
         #Hx[celli_o] -= rhof_phi[facei]*Ufx[facei]
@@ -762,7 +769,17 @@ for facei in range(len(ownerfile.values)):
                 tau_n_y = 0.0
                 tau_n_z = 0.0
 
-            print(f"gnx: {g_ref_x}, gny: {g_ref_y}, gnz: {g_ref_z}")
+            #tau_n_x = 0.0
+            #tau_n_y = 0.0
+            #tau_n_z = 0.0
+            #print(f"gnx: {g_ref_x}, gny: {g_ref_y}, gnz: {g_ref_z}; tau_n: {tau_n_x} {tau_n_y} {tau_n_z}, Uref: {U_ref_x}/{Ufx[facei]} {U_ref_y} {U_ref_z}")
+            vBx = U_ref_x-(1.0-tau_n_x)*Ux1[celli_o]
+            vBy = U_ref_y-(1.0-tau_n_y)*Uy1[celli_o]
+            vBz = U_ref_z-(1.0-tau_n_z)*Uz1[celli_o]
+            gBx = g_ref_x + tau_n_x*Ux1[celli_o]*delta
+            gBy = g_ref_y + tau_n_y*Uy1[celli_o]*delta
+            gBz = g_ref_z + tau_n_z*Uz1[celli_o]*delta
+            print(f'valueBound: {vBx} {vBy} {vBz}, gradBound: {gBx} {gBy} {gBz}, Uref: {U_ref_x} {U_ref_y} {U_ref_z}, taun: {tau_n_x} {tau_n_y} {tau_n_z}')
             Hx[celli_o] += -rhof_phi[facei]*(U_ref_x-(1.0-tau_n_x)*Ux1[celli_o]) + rhof_nuf[facei]*magSf[facei]*(g_ref_x + tau_n_x*Ux1[celli_o]*delta)
             Hy[celli_o] += -rhof_phi[facei]*(U_ref_y-(1.0-tau_n_y)*Uy1[celli_o]) + rhof_nuf[facei]*magSf[facei]*(g_ref_y + tau_n_y*Uy1[celli_o]*delta)
             Hz[celli_o] += -rhof_phi[facei]*(U_ref_z-(1.0-tau_n_z)*Uz1[celli_o]) + rhof_nuf[facei]*magSf[facei]*(g_ref_z + tau_n_z*Uz1[celli_o]*delta)
