@@ -5,7 +5,7 @@ import numpy as np
 from fluidfoam import readmesh, readscalar, readvector, OpenFoamFile, getVolumes
 
 ########################volScalarTypeField#############################
-def readScalarVolType(field, n_cells, bounfile, time, sol, field_name, owners=None,neighbors=None):
+def readScalarVolType(field, n_cells, bounfile, time, sol, field_name, owners=None,neighbors=None, bc_names=[]):
     boundary_names = list(bounfile.boundaryface.keys())
     internal = readscalar(sol, time, field_name, verbose=False)
     if(len(internal) == 1):
@@ -30,16 +30,18 @@ def readScalarVolType(field, n_cells, bounfile, time, sol, field_name, owners=No
         end += n_faces
         field[start:end] = boundaryfield
 
-        if owners is not None and neighbors is not None:
-            n_internal_faces = len(neighbors)
-            for facei in range(len(owners)):
-                if facei >= start and facei < end:
-                    field[facei-n_internal_faces+n_cells] = field[owners[facei]]
-        #print(f"start:{start}, end:{end}")
+        if key in bc_names:
+            if owners is not None and neighbors is not None:
+                n_internal_faces = len(neighbors)
+                for facei in range(len(owners)):
+                    if facei >= n_start_face and facei < n_start_face+n_faces:
+                        facei_to_celli = facei-n_internal_faces+n_cells
+                        field[facei_to_celli] = field[owners[facei]]
+            #print(f"start:{start}, end:{end}")
         start = end
 
 ########################volVectorTypeField#############################
-def readVectorVolType(fieldx,fieldy,fieldz, n_cells, bounfile, time, sol, field_name, owners=None,neighbors=None):
+def readVectorVolType(fieldx,fieldy,fieldz, n_cells, bounfile, time, sol, field_name, owners=None, neighbors=None, bc_names=[]):
     boundary_names = list(bounfile.boundaryface.keys())
     internalx,internaly,internalz = readvector(sol, time, field_name, verbose=False)
     if(len(internalx) == 1):
@@ -76,14 +78,16 @@ def readVectorVolType(fieldx,fieldy,fieldz, n_cells, bounfile, time, sol, field_
         fieldy[start:end] = boundaryfieldy
         fieldz[start:end] = boundaryfieldz
 
-        if owners is not None and neighbors is not None:
-            n_internal_faces = len(neighbors)
-            for facei in range(len(owners)):
-                if facei >= start and facei < end:
-                    fieldx[facei-n_internal_faces+n_cells] = fieldx[owners[facei]]
-                    fieldy[facei-n_internal_faces+n_cells] = fieldy[owners[facei]]
-                    fieldz[facei-n_internal_faces+n_cells] = fieldz[owners[facei]]
-        #print(f"start:{start}, end:{end}")
+        if key in bc_names:
+            if owners is not None and neighbors is not None:
+                n_internal_faces = len(neighbors)
+                for facei in range(len(owners)):
+                    if facei >= n_start_face and facei < n_start_face+n_faces:
+                        facei_to_celli = facei-n_internal_faces+n_cells
+                        fieldx[facei_to_celli] = fieldx[owners[facei]]
+                        fieldy[facei_to_celli] = fieldy[owners[facei]]
+                        fieldz[facei_to_celli] = fieldz[owners[facei]]
+            #print(f"start:{start}, end:{end}")
         start = end
 
 ########################volScalarTypeField#############################
